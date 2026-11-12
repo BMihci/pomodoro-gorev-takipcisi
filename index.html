@@ -1,0 +1,542 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#d9573b">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Pomodoro">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<title>Pomodoro Görev Takipçisi</title>
+<style>
+  :root {
+    --bg: #fbf6f0; --card: #ffffff; --text: #2b2420; --muted: #8a7d73;
+    --border: #eadfd3; --work: #d9573b; --short: #3b8f7a; --long: #4a79b8;
+    --accent: var(--work);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1b1715; --card: #26201d; --text: #f3ebe4; --muted: #a59a90;
+      --border: #3a312c; --work: #ef7a5f; --short: #5fc0a8; --long: #7fa6dd;
+    }
+  }
+  body[data-mode="work"]  { --accent: var(--work); }
+  body[data-mode="short"] { --accent: var(--short); }
+  body[data-mode="long"]  { --accent: var(--long); }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    line-height: 1.4; transition: background .3s;
+  }
+  .wrap { max-width: 520px; margin: 0 auto; padding: 20px 16px 48px; }
+  h1 { font-size: 1.1rem; margin: 4px 0 16px; text-align: center; color: var(--muted); font-weight: 600; letter-spacing: .02em; }
+
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 16px; padding: 20px; margin-bottom: 16px; }
+
+  .modes { display: flex; gap: 6px; justify-content: center; margin-bottom: 18px; flex-wrap: wrap; }
+  .modes button {
+    border: 1px solid var(--border); background: transparent; color: var(--muted);
+    padding: 7px 14px; border-radius: 999px; font-size: .85rem; cursor: pointer; font-family: inherit;
+  }
+  .modes button.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+  .ring { position: relative; width: 240px; height: 240px; margin: 0 auto 8px; }
+  .ring svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+  .ring circle { fill: none; stroke-width: 10; }
+  .ring .track { stroke: var(--border); }
+  .ring .bar { stroke: var(--accent); stroke-linecap: round; transition: stroke-dashoffset .3s linear, stroke .3s; }
+  .ring .time {
+    position: absolute; inset: 0; display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+  }
+  .time .digits { font-size: 3.4rem; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
+  .time .label { font-size: .85rem; color: var(--muted); max-width: 180px; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  .controls { display: flex; gap: 10px; justify-content: center; margin-top: 14px; }
+  .btn {
+    border: none; border-radius: 12px; padding: 12px 26px; font-size: 1rem; font-weight: 600;
+    cursor: pointer; font-family: inherit; background: var(--accent); color: #fff;
+  }
+  .btn.ghost { background: transparent; color: var(--muted); border: 1px solid var(--border); padding: 12px 18px; }
+  .btn:active { transform: scale(.97); }
+
+  .stats { display: flex; justify-content: space-around; text-align: center; }
+  .stats b { display: block; font-size: 1.5rem; }
+  .stats span { font-size: .78rem; color: var(--muted); }
+
+  .add { display: flex; gap: 8px; margin-bottom: 12px; }
+  .add input {
+    flex: 1; min-width: 0; padding: 11px 12px; border-radius: 10px; font-size: 1rem; font-family: inherit;
+    border: 1px solid var(--border); background: var(--bg); color: var(--text);
+  }
+  .add input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+  .add button { padding: 0 16px; }
+
+  ul { list-style: none; margin: 0; padding: 0; }
+  li {
+    display: flex; align-items: center; gap: 10px; padding: 10px 8px; border-radius: 10px;
+    border: 1px solid transparent; cursor: pointer;
+  }
+  li + li { margin-top: 2px; }
+  li.active { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, transparent); }
+  li input[type=checkbox] { width: 20px; height: 20px; accent-color: var(--accent); flex: none; cursor: pointer; }
+  li .txt { flex: 1; min-width: 0; word-break: break-word; }
+  li.done .txt { text-decoration: line-through; color: var(--muted); }
+  li .pomos { font-size: .8rem; color: var(--muted); white-space: nowrap; }
+  li .del { background: none; border: none; color: var(--muted); font-size: 1.2rem; cursor: pointer; padding: 2px 6px; }
+  li .del:hover { color: var(--work); }
+  li .handle {
+    touch-action: none; user-select: none; -webkit-user-select: none; cursor: grab; flex: none;
+    background: none; border: none; color: var(--muted); font-size: 1.1rem; padding: 4px 2px; font-family: inherit;
+  }
+  li.dragging { opacity: .65; border-color: var(--accent); }
+  li .edit { background: none; border: none; color: var(--muted); font-size: 1rem; cursor: pointer; padding: 2px 4px; }
+  li .edit:hover { color: var(--accent); }
+  li .editbox {
+    flex: 1; min-width: 0; padding: 6px 8px; border-radius: 8px; font: inherit;
+    border: 1px solid var(--accent); background: var(--bg); color: var(--text);
+  }
+  .chart { display: flex; align-items: flex-end; gap: 8px; height: 140px; }
+  .chart .col { flex: 1; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 4px; }
+  .chart .val { font-size: .78rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .chart .cbar { width: 100%; max-width: 36px; border-radius: 6px 6px 2px 2px; background: color-mix(in srgb, var(--work) 40%, transparent); }
+  .chart .day { font-size: .75rem; color: var(--muted); }
+  .chart .col.today .cbar { background: var(--work); }
+  .chart .col.today .day, .chart .col.today .val { color: var(--text); font-weight: 600; }
+  .empty { text-align: center; color: var(--muted); padding: 14px 0 6px; font-size: .92rem; }
+  .row-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+  .row-head h2 { font-size: 1rem; margin: 0; }
+  .link { background: none; border: none; color: var(--muted); font-size: .82rem; cursor: pointer; font-family: inherit; text-decoration: underline; }
+
+  details summary { cursor: pointer; font-weight: 600; font-size: .95rem; }
+  .settings { display: grid; grid-template-columns: 1fr auto; gap: 10px 12px; margin-top: 14px; align-items: center; font-size: .92rem; }
+  .settings input {
+    width: 72px; padding: 8px; border-radius: 8px; text-align: center; font-family: inherit; font-size: 1rem;
+    border: 1px solid var(--border); background: var(--bg); color: var(--text);
+  }
+  .hint { color: var(--muted); font-size: .8rem; margin: 10px 0 0; }
+</style>
+</head>
+<body data-mode="work">
+<div class="wrap">
+  <h1>🍅 Pomodoro Görev Takipçisi</h1>
+
+  <div class="card">
+    <div class="modes" id="modes">
+      <button data-mode="work" class="active">Odaklan</button>
+      <button data-mode="short">Kısa mola</button>
+      <button data-mode="long">Uzun mola</button>
+    </div>
+    <div class="ring">
+      <svg viewBox="0 0 120 120">
+        <circle class="track" cx="60" cy="60" r="54"></circle>
+        <circle class="bar" id="bar" cx="60" cy="60" r="54"></circle>
+      </svg>
+      <div class="time">
+        <div class="digits" id="digits">25:00</div>
+        <div class="label" id="label">Görev seçilmedi</div>
+      </div>
+    </div>
+    <div class="controls">
+      <button class="btn" id="startBtn">Başlat</button>
+      <button class="btn ghost" id="resetBtn">Sıfırla</button>
+      <button class="btn ghost" id="skipBtn" title="Sıradaki bölüme geç">Atla</button>
+    </div>
+  </div>
+
+  <div class="card stats">
+    <div><b id="statToday">0</b><span>bugün tamamlanan</span></div>
+    <div><b id="statTasks">0/0</b><span>biten görev</span></div>
+    <div><b id="statMin">0</b><span>bugün odak (dk)</span></div>
+  </div>
+
+  <div class="card">
+    <div class="row-head">
+      <h2>Son 7 gün</h2>
+      <span class="hint" id="weekTotal" style="margin:0"></span>
+    </div>
+    <div class="chart" id="chart" role="img" aria-label="Son 7 günün odak turları"></div>
+  </div>
+
+  <div class="card">
+    <div class="row-head">
+      <h2>Görevler</h2>
+      <button class="link" id="clearDone">Bitenleri temizle</button>
+    </div>
+    <form class="add" id="addForm">
+      <input id="newTask" type="text" placeholder="Yeni görev ekle…" maxlength="120" autocomplete="off">
+      <button class="btn" type="submit">Ekle</button>
+    </form>
+    <ul id="list"></ul>
+    <p class="hint" id="hint">Göreve dokun: aktif olur ve sayaç onun için çalışır. ✎ ile düzenle, ⠿ tutamacından sürükleyerek sırala.</p>
+  </div>
+
+  <div class="card">
+    <details>
+      <summary>Ayarlar</summary>
+      <div class="settings">
+        <label for="setWork">Odaklanma süresi (dk)</label><input id="setWork" type="number" min="1" max="120">
+        <label for="setShort">Kısa mola (dk)</label><input id="setShort" type="number" min="1" max="60">
+        <label for="setLong">Uzun mola (dk)</label><input id="setLong" type="number" min="1" max="90">
+        <label for="setEvery">Uzun mola kaç turda bir</label><input id="setEvery" type="number" min="2" max="10">
+      </div>
+      <p class="hint">Boşluk tuşu sayacı başlatır/durdurur. Veriler yalnızca bu tarayıcıda saklanır.</p>
+    </details>
+  </div>
+</div>
+
+<script>
+(() => {
+  'use strict';
+  const KEY = 'pomodoro-takipci-v1';
+  const MODES = { work: 'Odaklanma', short: 'Kısa mola', long: 'Uzun mola' };
+  const CIRC = 2 * Math.PI * 54;
+
+  const dkey = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  const today = () => dkey(new Date());
+  const DAYS = ['Paz', 'Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt'];
+  const defaults = () => ({
+    tasks: [], activeId: null,
+    settings: { work: 25, short: 5, long: 15, every: 4 },
+    history: {},
+    cycle: 0
+  });
+
+  let state = defaults();
+  try {
+    const raw = localStorage.getItem(KEY);
+    if (raw) state = Object.assign(defaults(), JSON.parse(raw));
+  } catch (e) {}
+  if (!state.history || typeof state.history !== 'object') state.history = {};
+  if (!Array.isArray(state.tasks)) state.tasks = [];
+  // Eski sürümün tek günlük sayacını geçmişe taşı
+  if (state.stats) {
+    if (state.stats.pomos && !state.history[state.stats.date])
+      state.history[state.stats.date] = { pomos: state.stats.pomos, minutes: state.stats.minutes || 0 };
+    delete state.stats;
+  }
+  const dayStats = () => state.history[today()] || { pomos: 0, minutes: 0 };
+
+  const save = () => { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {} };
+
+  // Zamanlayıcı durumu
+  let mode = 'work', total = state.settings.work * 60, remaining = total, endAt = 0, running = false, timerId = null;
+
+  const $ = id => document.getElementById(id);
+  const bar = $('bar');
+  bar.style.strokeDasharray = CIRC;
+
+  function durationOf(m) { return state.settings[m] * 60; }
+
+  function setMode(m, keepRunning) {
+    mode = m;
+    total = remaining = durationOf(m);
+    if (!keepRunning) stop();
+    document.body.dataset.mode = m;
+    document.querySelectorAll('#modes button').forEach(b => b.classList.toggle('active', b.dataset.mode === m));
+    renderTimer();
+  }
+
+  function start() {
+    if (running) return;
+    ensureAudio();
+    if ('Notification' in window && Notification.permission === 'default') Notification.requestPermission();
+    running = true;
+    endAt = Date.now() + remaining * 1000;
+    timerId = setInterval(tick, 250);
+    $('startBtn').textContent = 'Duraklat';
+  }
+
+  function stop() {
+    running = false;
+    clearInterval(timerId);
+    $('startBtn').textContent = remaining < total ? 'Devam et' : 'Başlat';
+  }
+
+  function tick() {
+    remaining = Math.max(0, Math.round((endAt - Date.now()) / 1000));
+    renderTimer();
+    if (remaining === 0) complete();
+  }
+
+  function complete() {
+    stop();
+    beep();
+    if (mode === 'work') {
+      state.cycle++;
+      const k = today();
+      const h = state.history[k] || (state.history[k] = { pomos: 0, minutes: 0 });
+      h.pomos++;
+      h.minutes += state.settings.work;
+      Object.keys(state.history).sort().slice(0, -60).forEach(old => delete state.history[old]);
+      const t = state.tasks.find(x => x.id === state.activeId);
+      if (t) t.pomos = (t.pomos || 0) + 1;
+      notify('Odaklanma bitti 🎉', 'Mola zamanı.');
+      setMode(state.cycle % state.settings.every === 0 ? 'long' : 'short');
+    } else {
+      notify('Mola bitti', 'Yeni tura hazır mısın?');
+      setMode('work');
+    }
+    save(); renderAll();
+  }
+
+  // Ses ve bildirim
+  let audioCtx = null;
+  function ensureAudio() {
+    try { if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {}
+  }
+  function beep() {
+    if (!audioCtx) return;
+    [0, .25, .5].forEach(d => {
+      const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+      o.frequency.value = 880; o.connect(g); g.connect(audioCtx.destination);
+      const t = audioCtx.currentTime + d;
+      g.gain.setValueAtTime(.0001, t); g.gain.exponentialRampToValueAtTime(.25, t + .02);
+      g.gain.exponentialRampToValueAtTime(.0001, t + .2);
+      o.start(t); o.stop(t + .22);
+    });
+  }
+  function notify(title, body) {
+    try { if ('Notification' in window && Notification.permission === 'granted') new Notification(title, { body }); } catch (e) {}
+  }
+
+  // Çizim
+  const mmss = s => String(Math.floor(s / 60)).padStart(2, '0') + ':' + String(s % 60).padStart(2, '0');
+
+  function renderTimer() {
+    $('digits').textContent = mmss(remaining);
+    bar.style.strokeDashoffset = CIRC * (1 - remaining / total);
+    const t = state.tasks.find(x => x.id === state.activeId);
+    $('label').textContent = mode === 'work' ? (t ? t.text : 'Görev seçilmedi') : MODES[mode];
+    document.title = running ? `${mmss(remaining)} · ${MODES[mode]}` : 'Pomodoro Görev Takipçisi';
+    if (!running) $('startBtn').textContent = remaining < total ? 'Devam et' : 'Başlat';
+  }
+
+  let editingId = null;
+
+  function moveTask(id, dir) {
+    const i = state.tasks.findIndex(x => x.id === id), j = i + dir;
+    if (i < 0 || j < 0 || j >= state.tasks.length) return;
+    [state.tasks[i], state.tasks[j]] = [state.tasks[j], state.tasks[i]];
+    save(); renderList();
+    const h = $('list').querySelector('li[data-id="' + id + '"] .handle');
+    if (h) h.focus();
+  }
+
+  // Sürüklenen satır yerinde kalır, komşuları onun etrafında yer değiştirir
+  function startDrag(e, li) {
+    if (e.button) return;
+    e.preventDefault();
+    const ul = $('list');
+    li.classList.add('dragging');
+    const move = ev => {
+      const prev = li.previousElementSibling, next = li.nextElementSibling;
+      if (prev) {
+        const r = prev.getBoundingClientRect();
+        if (ev.clientY < r.top + r.height / 2) { ul.insertBefore(prev, li.nextSibling); return; }
+      }
+      if (next) {
+        const r = next.getBoundingClientRect();
+        if (ev.clientY > r.top + r.height / 2) ul.insertBefore(next, li);
+      }
+    };
+    const up = () => {
+      document.removeEventListener('pointermove', move);
+      document.removeEventListener('pointerup', up);
+      document.removeEventListener('pointercancel', up);
+      const order = [...ul.children].map(x => x.dataset.id);
+      state.tasks.sort((x, y) => order.indexOf(x.id) - order.indexOf(y.id));
+      save(); renderList();
+    };
+    document.addEventListener('pointermove', move);
+    document.addEventListener('pointerup', up);
+    document.addEventListener('pointercancel', up);
+  }
+
+  function renderList() {
+    const ul = $('list');
+    ul.textContent = '';
+    if (!state.tasks.length) {
+      const p = document.createElement('div');
+      p.className = 'empty'; p.textContent = 'Henüz görev yok. İlkini ekle!';
+      ul.appendChild(p);
+      return;
+    }
+    let focusEl = null;
+    state.tasks.forEach(t => {
+      const li = document.createElement('li');
+      li.dataset.id = t.id;
+      li.className = (t.done ? 'done ' : '') + (t.id === state.activeId ? 'active' : '');
+
+      const handle = document.createElement('button');
+      handle.type = 'button'; handle.className = 'handle'; handle.textContent = '⠿';
+      handle.setAttribute('aria-label', 'Sırala: sürükle ya da yukarı/aşağı ok tuşlarını kullan');
+      handle.addEventListener('click', e => e.stopPropagation());
+      handle.addEventListener('pointerdown', e => startDrag(e, li));
+      handle.addEventListener('keydown', e => {
+        if (e.key === 'ArrowUp') { e.preventDefault(); moveTask(t.id, -1); }
+        if (e.key === 'ArrowDown') { e.preventDefault(); moveTask(t.id, 1); }
+      });
+
+      const cb = document.createElement('input');
+      cb.type = 'checkbox'; cb.checked = t.done;
+      cb.addEventListener('click', e => e.stopPropagation());
+      cb.addEventListener('change', () => {
+        t.done = cb.checked;
+        if (t.done && state.activeId === t.id) state.activeId = null;
+        save(); renderAll();
+      });
+
+      let txt;
+      if (editingId === t.id) {
+        txt = document.createElement('input');
+        txt.type = 'text'; txt.className = 'editbox'; txt.value = t.text; txt.maxLength = 120;
+        txt.setAttribute('aria-label', 'Görev metni');
+        let finished = false;
+        const finish = keep => {
+          if (finished) return;
+          finished = true;
+          const v = txt.value.trim();
+          if (keep && v) t.text = v;
+          editingId = null;
+          save(); renderAll();
+        };
+        txt.addEventListener('click', e => e.stopPropagation());
+        txt.addEventListener('keydown', e => {
+          if (e.key === 'Enter') finish(true);
+          if (e.key === 'Escape') finish(false);
+        });
+        txt.addEventListener('blur', () => finish(true));
+        focusEl = txt;
+      } else {
+        txt = document.createElement('span'); txt.className = 'txt'; txt.textContent = t.text;
+        txt.addEventListener('dblclick', e => { e.stopPropagation(); editingId = t.id; renderList(); });
+      }
+
+      const pm = document.createElement('span'); pm.className = 'pomos';
+      pm.textContent = t.pomos ? '🍅 ' + t.pomos : '';
+
+      const edit = document.createElement('button');
+      edit.type = 'button'; edit.className = 'edit'; edit.textContent = '✎';
+      edit.setAttribute('aria-label', 'Görevi düzenle');
+      edit.addEventListener('click', e => { e.stopPropagation(); editingId = t.id; renderList(); });
+
+      const del = document.createElement('button');
+      del.type = 'button'; del.className = 'del'; del.textContent = '×';
+      del.setAttribute('aria-label', 'Görevi sil');
+      del.addEventListener('click', e => {
+        e.stopPropagation();
+        state.tasks = state.tasks.filter(x => x.id !== t.id);
+        if (state.activeId === t.id) state.activeId = null;
+        save(); renderAll();
+      });
+
+      li.addEventListener('click', () => {
+        if (t.done || editingId) return;
+        state.activeId = state.activeId === t.id ? null : t.id;
+        save(); renderAll();
+      });
+      li.append(handle, cb, txt, pm, edit, del);
+      ul.appendChild(li);
+    });
+    if (focusEl) { focusEl.focus(); focusEl.select(); }
+  }
+
+  function renderStats() {
+    const d = dayStats();
+    $('statToday').textContent = d.pomos;
+    $('statMin').textContent = d.minutes;
+    $('statTasks').textContent = state.tasks.filter(t => t.done).length + '/' + state.tasks.length;
+  }
+
+  function renderChart() {
+    const el = $('chart');
+    el.textContent = '';
+    const days = [];
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(); d.setDate(d.getDate() - i);
+      const h = state.history[dkey(d)] || {};
+      days.push({ name: DAYS[d.getDay()], n: h.pomos || 0, m: h.minutes || 0, today: i === 0 });
+    }
+    const max = Math.max(1, ...days.map(x => x.n));
+    days.forEach(x => {
+      const col = document.createElement('div'); col.className = 'col' + (x.today ? ' today' : '');
+      col.title = x.n + ' tur, ' + x.m + ' dk';
+      const val = document.createElement('div'); val.className = 'val'; val.textContent = x.n;
+      const bar = document.createElement('div'); bar.className = 'cbar';
+      bar.style.height = (x.n ? Math.max(6, Math.round(x.n / max * 86)) : 2) + 'px';
+      const day = document.createElement('div'); day.className = 'day'; day.textContent = x.name;
+      col.append(val, bar, day);
+      el.appendChild(col);
+    });
+    const total = days.reduce((a, x) => a + x.n, 0), mins = days.reduce((a, x) => a + x.m, 0);
+    $('weekTotal').textContent = total + ' tur · ' + mins + ' dk';
+  }
+
+  function renderAll() { renderTimer(); renderList(); renderStats(); renderChart(); }
+
+  // Olaylar
+  $('startBtn').addEventListener('click', () => running ? (stop(), renderTimer()) : start());
+  $('resetBtn').addEventListener('click', () => { stop(); remaining = total; renderTimer(); });
+  $('skipBtn').addEventListener('click', () => {
+    stop();
+    setMode(mode === 'work' ? 'short' : 'work');
+  });
+  $('modes').addEventListener('click', e => {
+    const b = e.target.closest('button'); if (b) setMode(b.dataset.mode);
+  });
+
+  $('addForm').addEventListener('submit', e => {
+    e.preventDefault();
+    const v = $('newTask').value.trim();
+    if (!v) return;
+    const task = { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), text: v, done: false, pomos: 0 };
+    state.tasks.unshift(task);
+    if (!state.activeId) state.activeId = task.id;
+    $('newTask').value = '';
+    save(); renderAll();
+  });
+
+  $('clearDone').addEventListener('click', () => {
+    state.tasks = state.tasks.filter(t => !t.done);
+    save(); renderAll();
+  });
+
+  [['setWork', 'work'], ['setShort', 'short'], ['setLong', 'long'], ['setEvery', 'every']].forEach(([id, k]) => {
+    const el = $(id);
+    el.value = state.settings[k];
+    el.addEventListener('change', () => {
+      const n = Math.min(+el.max, Math.max(+el.min, parseInt(el.value, 10) || state.settings[k]));
+      el.value = n; state.settings[k] = n; save();
+      if (!running && k === mode) { total = remaining = durationOf(mode); renderTimer(); }
+    });
+  });
+
+  document.addEventListener('keydown', e => {
+    if (e.code === 'Space' && !/INPUT|TEXTAREA|BUTTON/.test(document.activeElement.tagName)) {
+      e.preventDefault(); $('startBtn').click();
+    }
+  });
+
+  document.addEventListener('visibilitychange', () => { if (running) tick(); });
+
+  setMode('work');
+  renderAll();
+
+  // Gün değişince sayaç ve grafik yenilensin
+  let shownDay = today();
+  setInterval(() => { if (shownDay !== today()) { shownDay = today(); renderStats(); renderChart(); } }, 60000);
+
+  // Çevrimdışı çalışma ve ana ekrana ekleme
+  if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+    navigator.serviceWorker.register('sw.js').catch(() => {});
+  }
+})();
+</script>
+</body>
+</html>
